@@ -1,50 +1,57 @@
 import os
-import requests
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Proxy API - Red Pluviométrica")
+app = FastAPI()
 
-# Permitir peticiones desde el frontend (GitHub Pages y local)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción podés restringir al dominio de GitHub Pages
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configuración de Kobo (Token desde variable de entorno)
-KOBO_TOKEN = os.getenv("INTA_TOKEN")
-BASE_URL = "https://kf.kobotoolbox.org/api/v2/assets"
+INTA_TOKEN = os.getenv("INTA_TOKEN")
 
+# IDs de los activos en Kobo
 ASSET_PLUVIOMETROS = "aFwWKNGXZKppgNYKa33wC8"
-ASSET_PRECIPITACIONES = "aYqLUVvU3EYiDa7NoJbPKF"
+ASSET_LLUVIAS = "aYqLUVvU3EYiDa7NoJbPKF"
 
-def fetch_kobo_data(asset_uid: str):
-    if not KOBO_TOKEN:
-        raise HTTPException(status_code=500, detail="Token de Kobo no configurado en el servidor")
+# Dominios a probar (Global vs Humanitario)
+KOBO_URLS = [
+    f"https://kf.kobotoolbox.org/api/v2/assets/{{asset_id}}/data.json",
+    f"https://kobo.humanitarianresponse.info/api/v2/assets/{{asset_id}}/data.json"
+]
+
+async def fetch_kobo_data(asset_id: str):
+    if not INTA_TOKEN:
+        raise HTTPException(status_code=500, detail="Token INTA_TOKEN no configurado en servidor")
     
-    url = f"{BASE_URL}/{asset_uid}/data.json"
-    headers = {"Authorization": f"Token {KOBO_TOKEN}"}
+    headers = {"Authorization": f"Token {INTA_TOKEN.strip()}"}
     
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Error al conectar con Kobo: {str(e)}")
+    async with httpx.AsyncClient() as client:
+        for url_template in KOBO_URLS:
+            url = url_template.format(asset_id=asset_id)
+            try:
+                response = await client.get(url, headers=headers, timeout=15.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("results", [])
+            except Exception:
+                continue
 
-@app.get("/api/pluviometros")
-def get_pluviometros():
-    data = fetch_kobo_data(ASSET_PLUVIOMETROS)
-    return data.get("results", [])
-
-@app.get("/api/precipitaciones")
-def get_precipitaciones():
-    data = fetch_kobo_data(ASSET_PRECIPITACIONES)
-    return data.get("results", [])
+    raise HTTPException(status_code=502, detail=f"No se pudo obtener datos para el activo {asset_id} desde Kobo")
 
 @app.get("/")
 def home():
     return {"status": "ok", "message": "API Proxy funcionando correctamente"}
+
+@app.get("/api/pluviometros")
+async def get_pluviometros():
+    return await fetch_kobo_data(ASSET_PLUVIOMETROS)
+
+@app.get("/api/precipitaciones")
+async def get_precipitaciones():
+    return await fetch_kobo_data(ASSET_LLUVIAS)
