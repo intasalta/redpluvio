@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Permite las peticiones desde GitHub Pages (intasalta.github.io)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,31 +15,31 @@ app.add_middleware(
 
 INTA_TOKEN = os.getenv("INTA_TOKEN", "").strip()
 
-# Asset IDs correspondientes a tus formularios de Kobo/INTA Territorios
 ASSET_PRECIPITACIONES = "aYqLUVvU3EYiDa7NoJbPKF"
 ASSET_PLUVIOMETROS = "aFwWKNGXZKppgNYKa33wC8"
 
-# URL Base correcta de la API v2 de Kobo / INTA Territorios
 KOBO_BASE_URL = "https://territorios.inta.gob.ar/api/v2/assets"
 
 async def fetch_kobo_data(asset_id: str):
     if not INTA_TOKEN:
         raise HTTPException(
             status_code=500, 
-            detail="Error de configuración: INTA_TOKEN no está presente en las variables de entorno de Render"
+            detail="Error de configuración: INTA_TOKEN no está presente en Render"
         )
     
-    headers = {"Authorization": f"Token {INTA_TOKEN}"}
+    # Se agrega User-Agent para evitar que el servidor de INTA rechace la petición de Render
+    headers = {
+        "Authorization": f"Token {INTA_TOKEN}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
     
-    # Endpoint oficial de datos en Kobo API v2
     url = f"{KOBO_BASE_URL}/{asset_id}/data/?format=json"
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=False, follow_redirects=True) as client:
         try:
-            response = await client.get(url, headers=headers, timeout=20.0)
+            response = await client.get(url, headers=headers, timeout=30.0)
             if response.status_code == 200:
                 data = response.json()
-                # Extrae el array de registros para que tu js (api.js) lo consuma directo
                 if isinstance(data, dict):
                     return data.get("results", [])
                 return data
@@ -49,10 +48,10 @@ async def fetch_kobo_data(asset_id: str):
                     status_code=response.status_code, 
                     detail=f"Error en servidor INTA ({response.status_code}): {response.text}"
                 )
-        except httpx.RequestError as e:
+        except Exception as e:
             raise HTTPException(
-                status_code=502, 
-                detail=f"Error al conectar con territorios.inta.gob.ar: {str(e)}"
+                status_code=500, 
+                detail=f"Fallo en la comunicación con INTA: {str(e)}"
             )
 
 @app.get("/")
