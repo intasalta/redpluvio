@@ -18,45 +18,56 @@ INTA_TOKEN = os.getenv("INTA_TOKEN", "").strip()
 ASSET_PRECIPITACIONES = "aYqLUVvU3EYiDa7NoJbPKF"
 ASSET_PLUVIOMETROS = "aFwWKNGXZKppgNYKa33wC8"
 
-KOBO_BASE_URL = "https://territorios.inta.gob.ar/api/v2/assets"
+# URLs de prueba para Kobo/INTA Territorios
+ENDPOINTS = [
+    "https://territorios.inta.gob.ar/api/v2/assets/{asset_id}/data/?format=json",
+    "https://territorios.inta.gob.ar/assets/{asset_id}/submissions/?format=json",
+    "https://territorios.inta.gob.ar/api/v1/data/{asset_id}?format=json"
+]
 
 async def fetch_kobo_data(asset_id: str):
     if not INTA_TOKEN:
         raise HTTPException(
             status_code=500, 
-            detail="Error de configuración: INTA_TOKEN no está presente en Render"
+            detail="INTA_TOKEN no encontrado en las variables de entorno de Render"
         )
     
-    # Se agrega User-Agent para evitar que el servidor de INTA rechace la petición de Render
     headers = {
         "Authorization": f"Token {INTA_TOKEN}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
-    
-    url = f"{KOBO_BASE_URL}/{asset_id}/data/?format=json"
 
+    last_error = ""
+
+    # Probamos los distintos formatos de endpoint por si INTA usa API v1 o v2
     async with httpx.AsyncClient(verify=False, follow_redirects=True) as client:
-        try:
-            response = await client.get(url, headers=headers, timeout=30.0)
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, dict):
-                    return data.get("results", [])
-                return data
-            else:
-                raise HTTPException(
-                    status_code=response.status_code, 
-                    detail=f"Error en servidor INTA ({response.status_code}): {response.text}"
-                )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Fallo en la comunicación con INTA: {str(e)}"
-            )
+        for pattern in ENDPOINTS:
+            url = pattern.format(asset_id=asset_id)
+            try:
+                print(f"[DEBUG] Consultando: {url}")
+                response = await client.get(url, headers=headers, timeout=15.0)
+                print(f"[DEBUG] Status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, dict):
+                        return data.get("results", data)
+                    return data
+                else:
+                    last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+            except Exception as e:
+                last_error = str(e)
+                print(f"[DEBUG] Excepción al consultar {url}: {e}")
+
+    # Si ninguno respondió 200, devuelve detalle para no dar 502 genérico
+    raise HTTPException(
+        status_code=502,
+        detail=f"No se pudo obtener datos de INTA. Último intento: {last_error}"
+    )
 
 @app.get("/")
 def home():
-    return {"status": "ok", "message": "API Proxy Red Pluviométrica INTA activa"}
+    return {"status": "ok", "message": "Backend Red Pluviométrica activo"}
 
 @app.get("/api/pluviometros")
 async def get_pluviometros():
