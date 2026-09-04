@@ -1,1 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Red Pluviométrica INTAMonitor</title>
+    
+    <!-- CSS Leaflet (Mapa) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Estilos Propios -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
 
+    <header class="navbar">
+        <h1>Red Pluviométrica</h1>
+        <p class="subtitle">Monitoreo de Precipitaciones Diarias</p>
+    </header>
+
+    <main class="container">
+        <!-- Panel Izquierdo / Filtros -->
+        <aside class="sidebar">
+            <h2>Filtros</h2>
+            <div class="filter-group">
+                <label for="select-pluviometro">Pluviómetro:</label>
+                <select id="select-pluviometro">
+                    <option value="todos">Todos los pluviómetros</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="fecha-inicio">Desde:</label>
+                <input type="date" id="fecha-inicio">
+            </div>
+
+            <div class="filter-group">
+                <label for="fecha-fin">Hasta:</label>
+                <input type="date" id="fecha-fin">
+            </div>
+
+            <button id="btn-filtrar" class="btn-primary">Aplicar Filtros</button>
+        </aside>
+
+        <!-- Contenido Principal: Mapa y Tablas -->
+        <section class="content">
+            <!-- Contenedor Mapa -->
+            <div class="card">
+                <h3>Ubicación de Pluviómetros</h3>
+                <div id="map"></div>
+            </div>
+
+            <!-- Contenedor Tabla -->
+            <div class="card">
+                <h3>Registros de Lluvia</h3>
+                <div class="table-container">
+                    <table id="tabla-datos">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Pluviómetro</th>
+                                <th>Lluvia (mm)</th>
+                                <th>Fenómeno</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-body">
+                            <tr>
+                                <td colspan="4" class="text-center">Cargando datos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- JS Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Módulos JS Propios -->
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/tables.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
