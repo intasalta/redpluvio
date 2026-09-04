@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Configuración CORS para permitir peticiones desde cualquier origen (GitHub Pages / Streamlit)
+# Permite las peticiones desde GitHub Pages (intasalta.github.io)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,8 +20,8 @@ INTA_TOKEN = os.getenv("INTA_TOKEN", "").strip()
 ASSET_PRECIPITACIONES = "aYqLUVvU3EYiDa7NoJbPKF"
 ASSET_PLUVIOMETROS = "aFwWKNGXZKppgNYKa33wC8"
 
-# URL Base del servicio Kobo / INTA Territorios
-KOBO_BASE_URL = "https://territorios.inta.gob.ar/assets"
+# URL Base correcta de la API v2 de Kobo / INTA Territorios
+KOBO_BASE_URL = "https://territorios.inta.gob.ar/api/v2/assets"
 
 async def fetch_kobo_data(asset_id: str):
     if not INTA_TOKEN:
@@ -31,17 +31,18 @@ async def fetch_kobo_data(asset_id: str):
         )
     
     headers = {"Authorization": f"Token {INTA_TOKEN}"}
-    # Endpoint oficial de envíos en Kobo API v2
-    url = f"{KOBO_BASE_URL}/{asset_id}/submissions/?format=json"
+    
+    # Endpoint oficial de datos en Kobo API v2
+    url = f"{KOBO_BASE_URL}/{asset_id}/data/?format=json"
 
     async with httpx.AsyncClient(verify=False) as client:
         try:
             response = await client.get(url, headers=headers, timeout=20.0)
             if response.status_code == 200:
                 data = response.json()
-                # Devolver los resultados en formato de lista para el frontend/Streamlit
+                # Extrae el array de registros para que tu js (api.js) lo consuma directo
                 if isinstance(data, dict):
-                    return data.get("results", data)
+                    return data.get("results", [])
                 return data
             else:
                 raise HTTPException(
