@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+# Configuración CORS para permitir peticiones desde cualquier origen (GitHub Pages / Streamlit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,46 +16,47 @@ app.add_middleware(
 
 INTA_TOKEN = os.getenv("INTA_TOKEN", "").strip()
 
+# Asset IDs correspondientes a tus formularios de Kobo/INTA Territorios
+ASSET_PRECIPITACIONES = "aYqLUVvU3EYiDa7NoJbPKF"
 ASSET_PLUVIOMETROS = "aFwWKNGXZKppgNYKa33wC8"
-ASSET_LLUVIAS = "aYqLUVvU3EYiDa7NoJbPKF"
 
-# Rutas estándar de la API v2 de Kobo
-ENDPOINTS = [
-    "https://kf.kobotoolbox.org/api/v2/assets/{asset_id}/data/?format=json",
-    "https://kf.kobotoolbox.org/api/v2/assets/{asset_id}/data.json",
-    "https://kobo.humanitarianresponse.info/api/v2/assets/{asset_id}/data/?format=json",
-    "https://kobo.humanitarianresponse.info/api/v2/assets/{asset_id}/data.json",
-]
+# URL Base del servicio Kobo / INTA Territorios
+KOBO_BASE_URL = "https://territorios.inta.gob.ar/assets"
 
 async def fetch_kobo_data(asset_id: str):
     if not INTA_TOKEN:
-        raise HTTPException(status_code=500, detail="Token INTA_TOKEN no configurado")
+        raise HTTPException(
+            status_code=500, 
+            detail="Error de configuración: INTA_TOKEN no está presente en las variables de entorno de Render"
+        )
     
     headers = {"Authorization": f"Token {INTA_TOKEN}"}
-    last_error = ""
+    # Endpoint oficial de envíos en Kobo API v2
+    url = f"{KOBO_BASE_URL}/{asset_id}/submissions/?format=json"
 
-    async with httpx.AsyncClient() as client:
-        for url_template in ENDPOINTS:
-            url = url_template.format(asset_id=asset_id)
-            try:
-                response = await client.get(url, headers=headers, timeout=15.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    # Soporta tanto formato lista como dict con 'results'
-                    if isinstance(data, dict):
-                        return data.get("results", [])
-                    elif isinstance(data, list):
-                        return data
-                else:
-                    last_error = f"Status {response.status_code} en {url}"
-            except Exception as e:
-                last_error = str(e)
-
-    raise HTTPException(status_code=502, detail=f"Error Kobo: {last_error}")
+    async with httpx.AsyncClient(verify=False) as client:
+        try:
+            response = await client.get(url, headers=headers, timeout=20.0)
+            if response.status_code == 200:
+                data = response.json()
+                # Devolver los resultados en formato de lista para el frontend/Streamlit
+                if isinstance(data, dict):
+                    return data.get("results", data)
+                return data
+            else:
+                raise HTTPException(
+                    status_code=response.status_code, 
+                    detail=f"Error en servidor INTA ({response.status_code}): {response.text}"
+                )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=502, 
+                detail=f"Error al conectar con territorios.inta.gob.ar: {str(e)}"
+            )
 
 @app.get("/")
 def home():
-    return {"status": "ok", "message": "API Proxy funcionando correctamente"}
+    return {"status": "ok", "message": "API Proxy Red Pluviométrica INTA activa"}
 
 @app.get("/api/pluviometros")
 async def get_pluviometros():
@@ -62,4 +64,4 @@ async def get_pluviometros():
 
 @app.get("/api/precipitaciones")
 async def get_precipitaciones():
-    return await fetch_kobo_data(ASSET_LLUVIAS)
+    return await fetch_kobo_data(ASSET_PRECIPITACIONES)
