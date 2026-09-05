@@ -13,8 +13,20 @@ const TableManager = {
         'sin_fenomeno': 'Sin obs. de fenómenos'
     },
 
+    // Normaliza códigos removiendo caracteres especiales
     limpiarClave(txt) {
         return (txt || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    },
+
+    // Extrae el texto legible si Kobo manda un array/objeto de idiomas en 'label'
+    extraerTexto(val) {
+        if (!val) return '';
+        if (typeof val === 'string') return val.trim();
+        if (Array.isArray(val)) return val[0] ? this.extraerTexto(val[0]) : '';
+        if (typeof val === 'object') {
+            return val.es || val.Spanish || val.label || Object.values(val)[0] || '';
+        }
+        return String(val).trim();
     },
 
     formatearFecha(fechaStr) {
@@ -49,17 +61,22 @@ const TableManager = {
             return;
         }
 
-        // Mapeo dinámico leyendo todas las claves posibles que envía Kobo
+        // Construir mapa dinámico analizando todas las estructuras posibles de Kobo
         const mapaNombresPluvio = {};
+
         listaPluvio.forEach(p => {
             if (!p) return;
 
-            const codRaw = p.name || p.Codigo_txt_del_pluviometro || p.codigo || p.cod || p._id || p.id || '';
-            const nomRaw = p.label || p.Nombre_del_Pluviometro || p.nombre || p.Pluviometro || p.titulo || '';
+            // Buscar clave/código
+            const codRaw = p.name || p.name_clean || p.code || p.codigo || p.Codigo_txt_del_pluviometro || p._id || p.id || '';
+            
+            // Buscar etiqueta/nombre
+            const nomRaw = p.label || p.title || p.Nombre_del_Pluviometro || p.nombre || p.Pluviometro || '';
+            const nombreFinal = this.extraerTexto(nomRaw);
 
             const keyLimpia = this.limpiarClave(codRaw);
-            if (keyLimpia && nomRaw) {
-                mapaNombresPluvio[keyLimpia] = nomRaw;
+            if (keyLimpia && nombreFinal) {
+                mapaNombresPluvio[keyLimpia] = nombreFinal;
             }
         });
 
@@ -70,15 +87,15 @@ const TableManager = {
             const fechaRaw = reg.Fecha_del_dato || reg.start || reg._submission_time || 'S/D';
             const fechaFormateada = this.formatearFecha(fechaRaw);
 
-            // Código enviado en el registro
+            // Código del pluviómetro enviado en la respuesta del formulario
             const codigoRaw = (reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || reg.codigo || '').toString();
             const codigoLimpio = this.limpiarClave(codigoRaw);
 
-            // Búsqueda en el mapa de ASSET_PLUVIOMETROS
-            let nombrePluviometro = reg.Nombre_del_Pluviometro 
-                || mapaNombresPluvio[codigoLimpio];
+            // Intentar cruzar dinámicamente con el mapa generado de ASSET_PLUVIOMETROS
+            let nombrePluviometro = mapaNombresPluvio[codigoLimpio] 
+                || this.extraerTexto(reg.Nombre_del_Pluviometro);
 
-            // Si no cruzó con la lista, muestra el valor original con mayúscula inicial
+            // Fallback: si no cruzó por la clave, muestra el código con formato amigable
             if (!nombrePluviometro) {
                 nombrePluviometro = codigoRaw ? (codigoRaw.charAt(0).toUpperCase() + codigoRaw.slice(1)) : 'Desconocido';
             }
