@@ -24,14 +24,14 @@ const MapManager = {
             let lat = null;
             let lon = null;
 
-            // 1. Lectura por campos separados de Kobo (Latitude / Longitude)
-            if (item._Ubicaci_in_latitude && item._Ubicaci_in_longitude) {
-                lat = parseFloat(item._Ubicaci_in_latitude);
-                lon = parseFloat(item._Ubicaci_in_longitude);
-            } 
-            // 2. Fallback si vienen en un solo string espacio-separado
+            // 1. Lectura prioritaria desde la propiedad _geolocation de Kobo ([lat, lng])
+            if (Array.isArray(item._geolocation) && item._geolocation.length >= 2) {
+                lat = parseFloat(item._geolocation[0]);
+                lon = parseFloat(item._geolocation[1]);
+            }
+            // 2. Fallback si vienen en un string separado por espacios ("lat lng alt precision")
             else {
-                const coordsStr = item.Ubicaci_in || item.ubicacion || item._Ubicaci_in;
+                const coordsStr = item.Ubicaci_in || item.Ubicaci_ón || item.ubicacion || item._Ubicaci_in;
                 if (coordsStr) {
                     const parts = String(coordsStr).trim().split(/\s+/).map(Number);
                     if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
@@ -41,11 +41,11 @@ const MapManager = {
                 }
             }
 
-            // Si no hay coordenadas válidas, se saltea la ubicación
+            // Si no hay coordenadas válidas, se omite el registro
             if (lat === null || lon === null || isNaN(lat) || isNaN(lon)) return;
 
             const nombre = item.Nombre_del_Pluviometro || item.nombre || 'Pluviómetro';
-            const codigo = item.Codigo_txt_del_pluviometro || item.cod || '';
+            const codigo = item.Codigo_txt_del_pluviometro || item.codigo_txt_del_pluviometro || item.cod || '';
 
             const marker = L.marker([lat, lon])
                 .addTo(this.map)
