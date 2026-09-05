@@ -13,12 +13,16 @@ const TableManager = {
         'sin_fenomeno': 'Sin obs. de fenómenos'
     },
 
-    // Normaliza códigos removiendo caracteres especiales
-    limpiarClave(txt) {
-        return (txt || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Normalizador estándar: pasa a minúsculas, quita extensiones float y recorta espacios
+    normalizarCodigo(txt) {
+        if (txt === null || txt === undefined) return '';
+        return String(txt)
+            .trim()
+            .toLowerCase()
+            .replace(/\.0$/, '');
     },
 
-    // Extrae el texto legible si Kobo manda un array/objeto de idiomas en 'label'
+    // Extrae texto si Kobo devuelve un objeto/array de idioma
     extraerTexto(val) {
         if (!val) return '';
         if (typeof val === 'string') return val.trim();
@@ -61,25 +65,41 @@ const TableManager = {
             return;
         }
 
-        // Construir mapa dinámico analizando todas las estructuras posibles de Kobo
-        const mapaNombresPluvio = {};
+        // 1. Mapa de Equivalencias: Código Corto -> Nombre Real de la Estación
+        const mapaNombres = {};
 
         listaPluvio.forEach(p => {
             if (!p) return;
 
-            // Buscar clave/código
-            const codRaw = p.name || p.name_clean || p.code || p.codigo || p.Codigo_txt_del_pluviometro || p._id || p.id || '';
-            
-            // Buscar etiqueta/nombre
-            const nomRaw = p.label || p.title || p.Nombre_del_Pluviometro || p.nombre || p.Pluviometro || '';
-            const nombreFinal = this.extraerTexto(nomRaw);
+            // Nombre completo real (ej: "El Algarrobal")
+            const nombreReal = this.extraerTexto(
+                p.Nombre_del_Pluviometro || p.nombre || p.label || p.title || p.Pluviometro
+            );
 
-            const keyLimpia = this.limpiarClave(codRaw);
-            if (keyLimpia && nombreFinal) {
-                mapaNombresPluvio[keyLimpia] = nombreFinal;
+            // Guardar asociando TODOS los posibles identificadores del pluviómetro
+            const posiblesCodigos = [
+                p.Codigo_txt_del_pluviometro,
+                p.cod,
+                p.codigo,
+                p.name,
+                p.id,
+                p._id
+            ];
+
+            posiblesCodigos.forEach(cod => {
+                const key = this.normalizarCodigo(cod);
+                if (key && nombreReal) {
+                    mapaNombres[key] = nombreReal;
+                }
+            });
+            
+            // También mapear por el propio nombre si viniera en minúsculas
+            if (nombreReal) {
+                mapaNombres[this.normalizarCodigo(nombreReal)] = nombreReal;
             }
         });
 
+        // 2. Renderizado de filas cruzando cada registro
         const rowsHtml = lista.map(reg => {
             if (!reg) return '';
 
@@ -87,30 +107,33 @@ const TableManager = {
             const fechaRaw = reg.Fecha_del_dato || reg.start || reg._submission_time || 'S/D';
             const fechaFormateada = this.formatearFecha(fechaRaw);
 
-            // Código del pluviómetro enviado en la respuesta del formulario
-            const codigoRaw = (reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || reg.codigo || '').toString();
-            const codigoLimpio = this.limpiarClave(codigoRaw);
+            // Código enviado por la app en la toma de datos (ej: "elalga")
+            const codigoReg = reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || reg.codigo || '';
+            const keyReg = this.normalizarCodigo(codigoReg);
 
-            // Intentar cruzar dinámicamente con el mapa generado de ASSET_PLUVIOMETROS
-            let nombrePluviometro = mapaNombresPluvio[codigoLimpio] 
-                || this.extraerTexto(reg.Nombre_del_Pluviometro);
+            // Búsqueda del Nombre Real:
+            // 1. Busca en el mapa cruzado por código ("elalga" -> "El Algarrobal")
+            // 2. O busca directamente si el registro ya traía la propiedad con el nombre completo
+            let nombreMostrar = mapaNombres[keyReg] 
+                || this.extraerTexto(reg.Nombre_del_Pluviometro)
+                || this.extraerTexto(reg.nombre);
 
-            // Fallback: si no cruzó por la clave, muestra el código con formato amigable
-            if (!nombrePluviometro) {
-                nombrePluviometro = codigoRaw ? (codigoRaw.charAt(0).toUpperCase() + codigoRaw.slice(1)) : 'Desconocido';
+            // Si no cruzó con nada, muestra el código capitalizado
+            if (!nombreMostrar) {
+                nombreMostrar = codigoReg ? (String(codigoReg).charAt(0).toUpperCase() + String(codigoReg).slice(1)) : 'Desconocido';
             }
 
-            // Milímetros
+            // Lluvia en mm
             const milimetros = reg.Mil_metros_registrados ?? reg.precipitacion ?? reg.lluvia ?? 0;
 
-            // Fenómeno
+            // Fenómeno Atmosférico
             const fenomenoRaw = (reg.fenomeno || reg.observaciones || 'sinfeno').toString().trim().toLowerCase();
             const fenomenoLimpio = this.mapaFenomenos[fenomenoRaw] || (fenomenoRaw ? fenomenoRaw.charAt(0).toUpperCase() + fenomenoRaw.slice(1) : 'Sin obs. de fenómenos');
 
             return `
                 <tr>
                     <td>${fechaFormateada}</td>
-                    <td><strong>${nombrePluviometro}</strong></td>
+                    <td><strong>${nombreMostrar}</strong></td>
                     <td>${milimetros} mm</td>
                     <td>${fenomenoLimpio}</td>
                 </tr>
