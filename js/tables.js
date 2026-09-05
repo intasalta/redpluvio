@@ -13,6 +13,32 @@ const TableManager = {
         'sin_fenomeno': 'Sin obs. de fenómenos'
     },
 
+    // Formateador inteligente para códigos sin coincidencia en catálogo (ej: "santaviceste" -> "Santa Vicente")
+    formatearNombreFallback(str) {
+        if (!str) return 'Desconocido';
+        let txt = String(str).trim();
+
+        // 1. Si contiene guiones bajos o medios, los reemplaza por espacios
+        txt = txt.replace(/[-_]+/g, ' ');
+
+        // 2. Separa palabras unidas en camelCase / PascalCase
+        txt = txt.replace(/([a-z])([A-Z])/g, '$1 $2');
+
+        // 3. Casos comunes de prefijos en claves Kobo pegadas (ej: "santa", "san", "los", "las", "el", "la")
+        const prefijos = ['santa', 'santo', 'san', 'los', 'las', 'del', 'finca', 'escuela'];
+        prefijos.forEach(pref => {
+            const regex = new RegExp(`^(${pref})([a-z]+)$`, 'i');
+            if (regex.test(txt)) {
+                txt = txt.replace(regex, '$1 $2');
+            }
+        });
+
+        // 4. Capitalizar cada palabra resultante
+        return txt.split(' ')
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(' ');
+    },
+
     formatearFecha(fechaStr) {
         if (!fechaStr || fechaStr === 'S/D') return 'S/D';
         try {
@@ -45,18 +71,15 @@ const TableManager = {
             return;
         }
 
-        // 1. Armar el mapa de equivalencias dinámico directamente desde la estructura de Kobo
+        // 1. Armar mapa de cruce dinámico desde la API de ubicaciones
         const mapaNombres = {};
 
         listaPluvio.forEach(p => {
             if (!p) return;
 
-            // Extraer el nombre exatamente como lo hace el Mapa (map.js)
             const nombreReal = p.Nombre_del_Pluviometro || p.nombre || p.label || p.title || p.Pluviometro;
-
             if (!nombreReal) return;
 
-            // Claves/códigos posibles bajo los que Kobo almacena la estación
             const codigosPosibles = [
                 p.Codigo_txt_del_pluviometro,
                 p.cod,
@@ -76,7 +99,7 @@ const TableManager = {
             });
         });
 
-        // 2. Renderizar filas haciendo el cruce con los registros de lluvia
+        // 2. Renderizar filas haciendo el cruce
         const rowsHtml = lista.map(reg => {
             if (!reg) return '';
 
@@ -84,18 +107,18 @@ const TableManager = {
             const fechaRaw = reg.Fecha_del_dato || reg.start || reg._submission_time || 'S/D';
             const fechaFormateada = this.formatearFecha(fechaRaw);
 
-            // Código de la estación guardado en la respuesta de lluvia
+            // Código guardado en la respuesta de lluvia
             const codigoRaw = reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || reg.codigo || '';
             const keyReg = String(codigoRaw).trim().toLowerCase();
 
-            // Cruce exacto: si coincide el código toma el Nombre_del_Pluviometro de la estación
+            // Búsqueda del nombre con resolución multinivel
             let nombreMostrar = mapaNombres[keyReg] 
                 || reg.Nombre_del_Pluviometro 
                 || reg.nombre;
 
-            // Si por alguna razón no coincidió, muestra la clave original limpia
+            // Si no estuvo en la API del mapa, aplicar formateador inteligente
             if (!nombreMostrar) {
-                nombreMostrar = codigoRaw ? (String(codigoRaw).charAt(0).toUpperCase() + String(codigoRaw).slice(1)) : 'Desconocido';
+                nombreMostrar = this.formatearNombreFallback(codigoRaw);
             }
 
             // Lluvia
@@ -103,7 +126,7 @@ const TableManager = {
 
             // Fenómeno
             const fenomenoRaw = (reg.fenomeno || reg.observaciones || 'sinfeno').toString().trim().toLowerCase();
-            const fenomenoLimpio = this.mapaFenomenos[fenomenoRaw] || (fenomenoRaw ? fenomenoRaw.charAt(0).toUpperCase() + fenomenoRaw.slice(1) : 'Sin obs. de fenómenos');
+            const fenomenoLimpio = this.mapaFenomenos[fenomenoRaw] || (fenomenoRaw ? fenómenoRaw.charAt(0).toUpperCase() + fenómenoRaw.slice(1) : 'Sin obs. de fenómenos');
 
             return `
                 <tr>
