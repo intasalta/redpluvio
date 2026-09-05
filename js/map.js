@@ -17,64 +17,70 @@ const MapManager = {
     },
 
     renderPluviometros(pluviometros, datosLluvia = []) {
-        this.clearMarkers();
+    this.clearMarkers();
 
-        if (!Array.isArray(pluviometros) || pluviometros.length === 0) return;
+    if (!Array.isArray(pluviometros) || pluviometros.length === 0) return;
 
-        // Crear mapa clave-valor para asociar las mediciones por el código del pluviómetro
-        const mapaLluvias = {};
-        datosLluvia.forEach(reg => {
-            const cod = reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || '';
-            const mm = reg.Mil_metros_registrados ?? reg.precipitacion ?? reg.lluvia ?? 0;
-            if (cod) mapaLluvias[cod] = mm;
-        });
+    // 1. Mapear las lluvias indexando por código y por nombre (normalizados)
+    const mapaLluvias = {};
+    datosLluvia.forEach(reg => {
+        const cod = (reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || '').toString().trim().toLowerCase();
+        const nom = (reg.Nombre_del_Pluviometro || reg.nombre || '').toString().trim().toLowerCase();
+        const mm = reg.Mil_metros_registrados ?? reg.precipitacion ?? reg.lluvia ?? 0;
 
-        pluviometros.forEach(item => {
-            let lat = null;
-            let lon = null;
+        if (cod) mapaLluvias[cod] = mm;
+        if (nom) mapaLluvias[nom] = mm;
+    });
 
-            if (Array.isArray(item._geolocation) && item._geolocation.length >= 2) {
-                lat = parseFloat(item._geolocation[0]);
-                lon = parseFloat(item._geolocation[1]);
-            } else {
-                const coordsStr = item.Ubicaci_in || item.Ubicaci_ón || item.ubicacion || item._Ubicaci_in;
-                if (coordsStr) {
-                    const parts = String(coordsStr).trim().split(/\s+/).map(Number);
-                    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                        lat = parts[0];
-                        lon = parts[1];
-                    }
+    pluviometros.forEach(item => {
+        let lat = null;
+        let lon = null;
+
+        // Extraer coordenadas
+        if (Array.isArray(item._geolocation) && item._geolocation.length >= 2) {
+            lat = parseFloat(item._geolocation[0]);
+            lon = parseFloat(item._geolocation[1]);
+        } else {
+            const coordsStr = item.Ubicaci_in || item.Ubicaci_ón || item.ubicacion || item._Ubicaci_in;
+            if (coordsStr) {
+                const parts = String(coordsStr).trim().split(/\s+/).map(Number);
+                if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                    lat = parts[0];
+                    lon = parts[1];
                 }
             }
-
-            if (lat === null || lon === null || isNaN(lat) || isNaN(lon)) return;
-
-            const nombre = item.Nombre_del_Pluviometro || item.nombre || 'Pluviómetro';
-            const codigo = item.Codigo_txt_del_pluviometro || item.cod || '';
-
-            // Si se pasaron datos de lluvia específicos, evaluamos si registró precipitación
-            const mmCalculados = mapaLluvias[codigo] !== undefined ? mapaLluvias[codigo] : null;
-
-            // Si hay un filtro por fecha activo, mostramos solo las estaciones que registraron mediciones
-            if (datosLluvia.length > 0 && mmCalculados === null) return;
-
-            const textoMm = mmCalculados !== null ? `${mmCalculados} mm` : 'Sin datos';
-
-            const marker = L.marker([lat, lon])
-                .addTo(this.map)
-                .bindPopup(`
-                    <div style="text-align: center;">
-                        <strong style="font-size: 1.1em; color: #1a5276;">${nombre}</strong><br>
-                        <span style="font-size: 1em; color: #27ae60; font-weight: bold;">Lluvia: ${textoMm}</span>
-                    </div>
-                `);
-
-            this.markers.push(marker);
-        });
-
-        if (this.markers.length > 0) {
-            const group = new L.featureGroup(this.markers);
-            this.map.fitBounds(group.getBounds().pad(0.15));
         }
+
+        if (lat === null || lon === null || isNaN(lat) || isNaN(lon)) return;
+
+        const codigoKey = (item.Codigo_txt_del_pluviometro || item.cod || '').toString().trim().toLowerCase();
+        const nombreKey = (item.Nombre_del_Pluviometro || item.nombre || '').toString().trim().toLowerCase();
+
+        // Buscar si existe medición asociada
+        const mm = mapaLluvias[codigoKey] ?? mapaLluvias[nombreKey];
+
+        // REGLA CLAVE: Si se pasaron datos de lluvia y esta estación NO tiene registros, NO se renderiza en el mapa
+        if (datosLluvia.length > 0 && mm === undefined) return;
+
+        const nombre = item.Nombre_del_Pluviometro || item.nombre || 'Pluviómetro';
+        const textoMm = mm !== undefined ? `${mm} mm` : 'Sin datos';
+
+        const marker = L.marker([lat, lon])
+            .addTo(this.map)
+            .bindPopup(`
+                <div style="text-align: center;">
+                    <strong style="font-size: 1.1em; color: #1a5276;">${nombre}</strong><br>
+                    <span style="font-size: 1em; color: #27ae60; font-weight: bold;">Lluvia: ${textoMm}</span>
+                </div>
+            `);
+
+        this.markers.push(marker);
+    });
+
+    // Reencuadrar el mapa con los puntos visibles
+    if (this.markers.length > 0) {
+        const group = new L.featureGroup(this.markers);
+        this.map.fitBounds(group.getBounds().pad(0.15));
     }
+}
 };
