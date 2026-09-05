@@ -13,18 +13,23 @@ const TableManager = {
         'sin_fenomeno': 'Sin obs. de fenómenos'
     },
 
+    // Normaliza textos removiendo guiones, espacios y símbolos para facilitar el cruce de datos
+    limpiarClave(txt) {
+        return (txt || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    },
+
     formatearFecha(fechaStr) {
         if (!fechaStr || fechaStr === 'S/D') return 'S/D';
-        
-        const limpia = fechaStr.split('T')[0];
-        const partes = limpia.split('-');
-
-        if (partes.length === 3) {
-            const [anio, mes, dia] = partes;
-            return `${dia}/${mes}/${anio}`;
+        try {
+            const limpia = String(fechaStr).split('T')[0];
+            const partes = limpia.split('-');
+            if (partes.length === 3) {
+                return `${partes[2]}/${partes[1]}/${partes[0]}`;
+            }
+            return limpia;
+        } catch (e) {
+            return String(fechaStr);
         }
-
-        return limpia;
     },
 
     render(registros, pluviometros = []) {
@@ -32,6 +37,7 @@ const TableManager = {
         if (!tbody) return;
 
         const lista = Array.isArray(registros) ? registros : [];
+        const listaPluvio = Array.isArray(pluviometros) ? pluviometros : [];
 
         if (lista.length === 0) {
             tbody.innerHTML = `
@@ -44,27 +50,49 @@ const TableManager = {
             return;
         }
 
+        // Mapeo dinámico de ASSET_PLUVIOMETROS
         const mapaNombresPluvio = {};
-        if (Array.isArray(pluviometros)) {
-            pluviometros.forEach(p => {
-                const cod = (p.Codigo_txt_del_pluviometro || p.cod || '').toString().trim().toLowerCase();
-                const nom = p.Nombre_del_Pluviometro || p.nombre || '';
-                if (cod && nom) mapaNombresPluvio[cod] = nom;
-            });
-        }
+        listaPluvio.forEach(p => {
+            if (!p) return;
+
+            // Extrae el código desde cualquier posible nombre de clave de Kobo (name, Codigo, id, etc.)
+            const codRaw = p.name || p.Codigo_txt_del_pluviometro || p.codigo || p.cod || p._id || '';
+            
+            // Extrae el nombre oficial desde label, Nombre_del_Pluviometro, etc.
+            const nomRaw = p.label || p.Nombre_del_Pluviometro || p.nombre || p.Pluviometro || '';
+
+            const keyLimpia = this.limpiarClave(codRaw);
+            if (keyLimpia && nomRaw) {
+                mapaNombresPluvio[keyLimpia] = nomRaw;
+            }
+        });
 
         const rowsHtml = lista.map(reg => {
+            if (!reg) return '';
+
+            // Fecha
             const fechaRaw = reg.Fecha_del_dato || reg.start || reg._submission_time || 'S/D';
             const fechaFormateada = this.formatearFecha(fechaRaw);
 
-            const codigoRaw = (reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || '').toString().trim();
-            const codigoKey = codigoRaw.toLowerCase();
-            const nombrePluviometro = reg.Nombre_del_Pluviometro || mapaNombresPluvio[codigoKey] || codigoRaw || 'Desconocido';
+            // Obtener el código enviado en la encuesta diaria de lluvias
+            const codigoRaw = (reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || reg.codigo || '').toString();
+            const codigoLimpio = this.limpiarClave(codigoRaw);
 
+            // Buscar en el mapa dinámico que proviene de ASSET_PLUVIOMETROS
+            let nombrePluviometro = reg.Nombre_del_Pluviometro 
+                || mapaNombresPluvio[codigoLimpio];
+
+            // Si por algún motivo no coincide la clave, muestra el código limpio capitalizado
+            if (!nombrePluviometro) {
+                nombrePluviometro = codigoRaw ? (codigoRaw.charAt(0).toUpperCase() + codigoRaw.slice(1)) : 'Desconocido';
+            }
+
+            // Milímetros
             const milimetros = reg.Mil_metros_registrados ?? reg.precipitacion ?? reg.lluvia ?? 0;
 
-            const fenomenoRaw = (reg.fenomeno || reg.observaciones || reg.notes?.[0] || 'sinfeno').toString().trim().toLowerCase();
-            const fenomenoLimpio = this.mapaFenomenos[fenomenoRaw] || (fenomenoRaw.charAt(0).toUpperCase() + fenomenoRaw.slice(1));
+            // Fenómeno
+            const fenomenoRaw = (reg.fenomeno || reg.observaciones || 'sinfeno').toString().trim().toLowerCase();
+            const fenomenoLimpio = this.mapaFenomenos[fenomenoRaw] || (fenomenoRaw ? fenomenoRaw.charAt(0).toUpperCase() + fenomenoRaw.slice(1) : 'Sin obs. de fenómenos');
 
             return `
                 <tr>
