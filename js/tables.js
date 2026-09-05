@@ -1,5 +1,7 @@
 const TableManager = {
-    tbody: document.getElementById('tabla-body'),
+    getTbody() {
+        return document.getElementById('tabla-body');
+    },
 
     mapaFenomenos: {
         'granizo': 'Granizo',
@@ -26,15 +28,13 @@ const TableManager = {
     },
 
     render(registros, pluviometros = []) {
-        if (!this.tbody) {
-            this.tbody = document.getElementById('tabla-body');
-            if (!this.tbody) return;
-        }
+        const tbody = this.getTbody();
+        if (!tbody) return;
 
         const lista = Array.isArray(registros) ? registros : [];
 
         if (lista.length === 0) {
-            this.tbody.innerHTML = `
+            tbody.innerHTML = `
                 <tr>
                     <td colspan="4" style="text-align: center; padding: 1rem;">
                         No se encontraron registros de lluvia.
@@ -76,6 +76,6 @@ const TableManager = {
             `;
         }).join('');
 
-        this.tbody.innerHTML = rowsHtml;
+        tbody.innerHTML = rowsHtml;
     }
 };
