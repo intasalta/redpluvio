@@ -13,7 +13,6 @@ const TableManager = {
         'sin_fenomeno': 'Sin obs. de fenómenos'
     },
 
-    // Normaliza textos removiendo guiones, espacios y símbolos para facilitar el cruce de datos
     limpiarClave(txt) {
         return (txt || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
     },
@@ -50,16 +49,13 @@ const TableManager = {
             return;
         }
 
-        // Mapeo dinámico de ASSET_PLUVIOMETROS
+        // Mapeo dinámico leyendo todas las claves posibles que envía Kobo
         const mapaNombresPluvio = {};
         listaPluvio.forEach(p => {
             if (!p) return;
 
-            // Extrae el código desde cualquier posible nombre de clave de Kobo (name, Codigo, id, etc.)
-            const codRaw = p.name || p.Codigo_txt_del_pluviometro || p.codigo || p.cod || p._id || '';
-            
-            // Extrae el nombre oficial desde label, Nombre_del_Pluviometro, etc.
-            const nomRaw = p.label || p.Nombre_del_Pluviometro || p.nombre || p.Pluviometro || '';
+            const codRaw = p.name || p.Codigo_txt_del_pluviometro || p.codigo || p.cod || p._id || p.id || '';
+            const nomRaw = p.label || p.Nombre_del_Pluviometro || p.nombre || p.Pluviometro || p.titulo || '';
 
             const keyLimpia = this.limpiarClave(codRaw);
             if (keyLimpia && nomRaw) {
@@ -74,15 +70,15 @@ const TableManager = {
             const fechaRaw = reg.Fecha_del_dato || reg.start || reg._submission_time || 'S/D';
             const fechaFormateada = this.formatearFecha(fechaRaw);
 
-            // Obtener el código enviado en la encuesta diaria de lluvias
+            // Código enviado en el registro
             const codigoRaw = (reg.Pluviometros || reg.pluviometro || reg.Codigo_txt_del_pluviometro || reg.codigo || '').toString();
             const codigoLimpio = this.limpiarClave(codigoRaw);
 
-            // Buscar en el mapa dinámico que proviene de ASSET_PLUVIOMETROS
+            // Búsqueda en el mapa de ASSET_PLUVIOMETROS
             let nombrePluviometro = reg.Nombre_del_Pluviometro 
                 || mapaNombresPluvio[codigoLimpio];
 
-            // Si por algún motivo no coincide la clave, muestra el código limpio capitalizado
+            // Si no cruzó con la lista, muestra el valor original con mayúscula inicial
             if (!nombrePluviometro) {
                 nombrePluviometro = codigoRaw ? (codigoRaw.charAt(0).toUpperCase() + codigoRaw.slice(1)) : 'Desconocido';
             }
